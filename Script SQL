@@ -1,0 +1,135 @@
+-- ==========================================
+-- ESTRUCTURA Y DATOS INICIALES - PETCARE WEB
+-- Base de Datos: SQL Server
+-- ==========================================
+
+-- 1. TABLA: Usuarios
+CREATE TABLE Usuarios (
+    UsuarioID INT IDENTITY(1,1) PRIMARY KEY,
+    Username NVARCHAR(50) NOT NULL UNIQUE,
+    PasswordHash NVARCHAR(256) NOT NULL, -- La BD almacena el hash[cite: 17]
+    NombreCompleto NVARCHAR(100) NOT NULL,
+    Rol NVARCHAR(30) NOT NULL CHECK (Rol IN ('Recepcionista', 'Administrador'))[cite: 2, 3]
+);
+
+-- 2. TABLA: Jaulas
+CREATE TABLE Jaulas (
+    JaulaID NVARCHAR(10) PRIMARY KEY, -- Ej: J-01, J-07-M
+    Tamaño NVARCHAR(10) NOT NULL CHECK (Tamaño IN ('P', 'M', 'G')), -- Pequeña, Mediana, Grande[cite: 7]
+    TarifaDiaria DECIMAL(18, 2) NOT NULL CHECK (TarifaDiaria > 0),
+    Estado NVARCHAR(20) NOT NULL DEFAULT 'Libre' CHECK (Estado IN ('Libre', 'Ocupada'))[cite: 7, 15]
+);
+
+-- 3. TABLA: Citas
+CREATE TABLE Citas (
+    CodigoCita NVARCHAR(20) PRIMARY KEY,
+    NombreMascota NVARCHAR(50) NOT NULL,
+    CedulaCliente NVARCHAR(20) NOT NULL,[cite: 2, 6]
+    FechaHora DATETIME2 NOT NULL,
+    Motivo NVARCHAR(200) NOT NULL,[cite: 2, 6]
+    DuracionMinutos INT NOT NULL DEFAULT 30 CHECK (DuracionMinutos BETWEEN 15 AND 180),[cite: 6, 15]
+    Veterinario NVARCHAR(100) NULL, -- 'Sin veterinario' o Nombre del doctor[cite: 5, 6, 15]
+    Valor DECIMAL(18, 2) NOT NULL CHECK (Valor >= 0),
+    Estado NVARCHAR(20) NOT NULL DEFAULT 'Programada' CHECK (Estado IN ('Programada', 'Atendida', 'Cancelada'))[cite: 2, 6, 15]
+);
+
+-- 4. TABLA: Hospitalizaciones
+CREATE TABLE Hospitalizaciones (
+    CodigoHospitalizacion NVARCHAR(20) PRIMARY KEY,
+    NombreMascota NVARCHAR(50) NOT NULL,
+    JaulaID NVARCHAR(10) NOT NULL FOREIGN KEY REFERENCES Jaulas(JaulaID),
+    FechaIngreso DATETIME2 NOT NULL,
+    FechaAlta DATETIME2 NULL,
+    DiasCobrar INT NULL CHECK (DiasCobrar IS NULL OR DiasCobrar >= 1),[cite: 7]
+    TarifaDiaria DECIMAL(18, 2) NOT NULL CHECK (TarifaDiaria > 0),[cite: 7]
+    ValorTotal DECIMAL(18, 2) NULL CHECK (ValorTotal IS NULL OR ValorTotal >= 0),
+    Estado NVARCHAR(20) NOT NULL DEFAULT 'Hospitalizada' CHECK (Estado IN ('Hospitalizada', 'Dada de alta'))[cite: 7, 15]
+);
+
+-- 5. TABLA: LotesMedicamento
+CREATE TABLE LotesMedicamento (
+    CodigoLote NVARCHAR(20) PRIMARY KEY,
+    Medicamento NVARCHAR(100) NOT NULL,
+    Tipo NVARCHAR(50) NOT NULL, -- Ej: Antibiótico, Vacuna, Analgésico[cite: 8]
+    FechaVencimiento DATE NOT NULL,
+    PrecioUnidad DECIMAL(18, 2) NOT NULL CHECK (PrecioUnidad > 0),
+    Stock INT NOT NULL CHECK (Stock >= 0),[cite: 2, 8]
+    VaEnNevera BIT NOT NULL DEFAULT 0 -- 1 = Sí, 0 = No[cite: 2, 8, 15]
+);
+
+-- 6. TABLA: Facturas
+CREATE TABLE Facturas (
+    NumeroFactura NVARCHAR(20) PRIMARY KEY,
+    FechaEmision DATETIME2 NOT NULL DEFAULT GETDATE(),
+    NombreCliente NVARCHAR(100) NOT NULL,
+    EmitidaPorUsuarioID INT NOT NULL FOREIGN KEY REFERENCES Usuarios(UsuarioID),
+    AnuladaPorUsuarioID INT NULL FOREIGN KEY REFERENCES Usuarios(UsuarioID),
+    Total DECIMAL(18, 2) NOT NULL DEFAULT 0 CHECK (Total >= 0),
+    Estado NVARCHAR(20) NOT NULL DEFAULT 'Vigente' CHECK (Estado IN ('Vigente', 'Anulada'))[cite: 1, 9, 11, 15]
+);
+
+-- 7. TABLA: LineasFactura
+CREATE TABLE LineasFactura (
+    LineaID INT IDENTITY(1,1) PRIMARY KEY,
+    NumeroFactura NVARCHAR(20) NOT NULL FOREIGN KEY REFERENCES Facturas(NumeroFactura),
+    TipoItem NVARCHAR(20) NOT NULL CHECK (TipoItem IN ('Cita', 'Hospitalizacion', 'Lote')),[cite: 14]
+    CodigoReferencia NVARCHAR(20) NOT NULL, -- Código de Cita, Hospitalización o Lote[cite: 1, 9]
+    Descripcion NVARCHAR(250) NOT NULL,[cite: 9, 14]
+    Cantidad INT NOT NULL CHECK (Cantidad > 0),
+    Subtotal DECIMAL(18, 2) NOT NULL CHECK (Subtotal >= 0)
+);
+GO
+
+-- ==========================================
+-- INSERCIÓN DE DATOS DE EJEMPLO
+-- ==========================================
+
+-- 1. Usuarios (Con hash ficticio de contraseña)[cite: 17]
+INSERT INTO Usuarios (Username, PasswordHash, NombreCompleto, Rol) VALUES
+('dgomez',  'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 'Diana Gomez', 'Recepcionista'),[cite: 5, 17]
+('mospina', 'c7ad44cbad762a5da0a452f9e854fdc1e0e7a52a38015f23f3eab1d80b931dd4', 'Marcela Ospina', 'Administrador');[cite: 10, 17]
+
+-- 2. Jaulas[cite: 7]
+INSERT INTO Jaulas (JaulaID, Tamaño, TarifaDiaria, Estado) VALUES
+('J-01', 'P', 25000.00, 'Libre'),
+('J-02', 'P', 25000.00, 'Libre'),
+('J-07', 'M', 38000.00, 'Ocupada'),  -- Ocupada por Trico[cite: 7]
+('J-12', 'G', 52000.00, 'Ocupada');  -- Ocupada por Luna[cite: 7]
+
+-- 3. Citas[cite: 6]
+INSERT INTO Citas (CodigoCita, NombreMascota, CedulaCliente, FechaHora, Motivo, DuracionMinutos, Veterinario, Valor, Estado) VALUES
+('CIT-009', 'Rambo',   '1036458721', '2026-11-24 10:00:00', 'Control posoperatorio', 45, 'Dra. Lina Restrepo', 82500.00, 'Programada'),[cite: 6]
+('CIT-001', 'Manchas', '1017123456', '2026-11-24 11:30:00', 'Chequeo general',       30, 'Sin veterinario',    60000.00, 'Programada'),[cite: 6]
+('CIT-003', 'Luna',    '1020987654', '2026-11-24 14:00:00', 'Vacunación',          90, 'Dr. Andrés Zapata',  150000.00, 'Cancelada'),[cite: 6]
+('CIT-002', 'Rocky',   '1035111222', '2026-11-20 09:00:00', 'Consulta dental',     45, 'Dr. Andrés Zapata',   82500.00, 'Atendida');[cite: 6]
+
+-- 4. Hospitalizaciones[cite: 7]
+INSERT INTO Hospitalizaciones (CodigoHospitalizacion, NombreMascota, JaulaID, FechaIngreso, FechaAlta, DiasCobrar, TarifaDiaria, ValorTotal, Estado) VALUES
+('HOS-132', 'Trico', 'J-07', '2026-11-21 08:00:00', '2026-11-24 10:00:00', 3, 38000.00, 114000.00, 'Hospitalizada'),[cite: 7]
+('HOS-130', 'Luna',  'J-12', '2026-11-22 09:00:00', NULL,                NULL, 52000.00, NULL,      'Hospitalizada'),[cite: 7]
+('HOS-128', 'Toby',  'J-02', '2026-11-15 10:00:00', '2026-11-19 10:00:00', 4, 25000.00, 100000.00, 'Dada de alta');[cite: 7]
+
+-- 5. Lotes de Medicamentos[cite: 8]
+INSERT INTO LotesMedicamento (CodigoLote, Medicamento, Tipo, FechaVencimiento, PrecioUnidad, Stock, VaEnNevera) VALUES
+('L-203',    'Amoxicilina 500 mg', 'Antibiótico',     '2027-06-30', 2500.00, 50, 0),[cite: 8]
+('MED-0207', 'Rabivac 10 mL',      'Vacuna',          '2027-11-15', 32000.00, 25, 1),[cite: 8]
+('MED-0142', 'Amoxivet 250 mg',    'Antibiótico',     '2027-06-15', 1800.00,  8, 0), -- Pedir más[cite: 8]
+('L-118',    'Meloxicam 1 mg',     'Analgésico',      '2026-11-23', 1800.00, 30, 0), -- Vencido[cite: 8]
+('MED-0315', 'Drontal Plus 700 mg','Antiparasitario', '2026-03-10', 9500.00, 40, 0); -- Vencido[cite: 8]
+
+-- 6. Facturas[cite: 9, 11, 12]
+INSERT INTO Facturas (NumeroFactura, FechaEmision, NombreCliente, EmitidaPorUsuarioID, AnuladaPorUsuarioID, Total, Estado) VALUES
+('FAC-1001', '2026-11-24 10:30:00', 'Iván Pérez',  1, 2, 201500.00, 'Anulada'),[cite: 9, 10, 11]
+('FAC-1002', '2026-11-24 11:00:00', 'Iván Pérez',  1, NULL, 82500.00, 'Vigente'),[cite: 11]
+('FAC-0998', '2026-11-20 15:00:00', 'Laura Henao', 1, NULL, 82500.00, 'Vigente');[cite: 12]
+
+-- 7. Líneas de Factura (Detalles)[cite: 9, 11]
+INSERT INTO LineasFactura (NumeroFactura, TipoItem, CodigoReferencia, Descripcion, Cantidad, Subtotal) VALUES
+-- Renglones de FAC-1001 (Anulada)[cite: 9]
+('FAC-1001', 'Cita',            'CIT-009', 'Consulta - Rambo - 24/11/2026 10:00 - Dra. Lina Restrepo', 1, 82500.00),[cite: 9]
+('FAC-1001', 'Hospitalizacion', 'HOS-132', 'Hospitalización - Trico - 3 días',                         1, 114000.00),[cite: 9]
+('FAC-1001', 'Lote',            'L-203',   'Amoxicilina 500 mg - Lote L-203',                          2, 5000.00),[cite: 9]
+
+-- Renglones de FAC-1002 (Vigente)[cite: 11]
+('FAC-1002', 'Cita',            'CIT-009', 'Consulta - Rambo - 24/11/2026 10:00 - Dra. Lina Restrepo', 1, 82500.00);[cite: 11]
+GO
